@@ -8,6 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1.21.0/index.js" type="module"></script>
     <style>
+        /* --- СТИЛИ ПОЛНОСТЬЮ ИДЕНТИЧНЫ ПРЕДЫДУЩЕЙ ВЕРСИИ (для краткости не дублирую, оставьте как есть) --- */
         *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif;}
         :root{--primary:#4361ee;--primary-dark:#3a56d4;--secondary:#7209b7;--success:#4cc9f0;--danger:#f72585;--light:#f8f9fa;--dark:#212529;--gray:#6c757d;--border:#e0e0e0;--shadow:0 8px 30px rgba(0,0,0,0.08);}
         body{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px;}
@@ -96,6 +97,7 @@
     </style>
 </head>
 <body>
+    <!-- HTML каркас без изменений (такой же как в предыдущей версии) -->
     <div class="container" id="appContainer">
         <!-- Авторизация -->
         <div class="auth-container" id="authContainer">
@@ -256,7 +258,8 @@
                 console.error('Supabase library not loaded');
                 return;
             }
-            const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            // Используем другое имя для клиента, чтобы не конфликтовать с глобальной переменной supabase
+            const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
             // Глобальные переменные
             let currentUser = null;
@@ -272,7 +275,7 @@
             let currentCallType = null;
             let incomingCallListener = null;
 
-            // DOM элементы
+            // DOM элементы (без изменений)
             const authContainer = document.getElementById('authContainer');
             const mainContainer = document.getElementById('mainContainer');
             const callContainer = document.getElementById('callContainer');
@@ -382,7 +385,7 @@
                     return;
                 }
 
-                const { data: existing } = await supabase
+                const { data: existing } = await supabaseClient
                     .from('users')
                     .select('username')
                     .eq('username', username);
@@ -392,7 +395,7 @@
                     return;
                 }
 
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('users')
                     .insert([{
                         username,
@@ -425,7 +428,7 @@
                 hideError('loginUsernameError');
                 hideError('loginPasswordError');
 
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('users')
                     .select('*')
                     .eq('username', username)
@@ -437,7 +440,7 @@
                 }
 
                 currentUser = data[0];
-                await supabase
+                await supabaseClient
                     .from('users')
                     .update({ online: true, last_seen: new Date() })
                     .eq('id', currentUser.id);
@@ -450,7 +453,7 @@
             // Выход
             logoutBtn.addEventListener('click', async () => {
                 if (currentUser) {
-                    await supabase
+                    await supabaseClient
                         .from('users')
                         .update({ online: false, last_seen: new Date() })
                         .eq('id', currentUser.id);
@@ -467,7 +470,7 @@
             // Загрузка контактов
             async function loadContacts() {
                 if (!currentUser) return;
-                const { data } = await supabase
+                const { data } = await supabaseClient
                     .from('contacts')
                     .select('contact_id, users!contacts_contact_id_fkey(id, username, name, avatar, online, last_seen)')
                     .eq('user_id', currentUser.id);
@@ -482,7 +485,7 @@
                 searchTimeout = setTimeout(async () => {
                     const q = e.target.value.trim();
                     if (!q || !currentUser) return;
-                    const { data } = await supabase
+                    const { data } = await supabaseClient
                         .from('users')
                         .select('*')
                         .neq('id', currentUser.id)
@@ -493,7 +496,7 @@
 
             // Добавление контакта
             async function addToContacts(user) {
-                await supabase
+                await supabaseClient
                     .from('contacts')
                     .insert([{ user_id: currentUser.id, contact_id: user.id }]);
                 userContacts.push(user);
@@ -514,7 +517,7 @@
                 attachBtn.disabled = false;
                 emojiBtn.disabled = false;
 
-                const { data } = await supabase
+                const { data } = await supabaseClient
                     .from('messages')
                     .select('*')
                     .or(`from_id.eq.${currentUser.id},to_id.eq.${currentUser.id}`)
@@ -532,7 +535,7 @@
                 renderMessages(contact.id);
 
                 if (messagesSubscription) messagesSubscription.unsubscribe();
-                messagesSubscription = supabase
+                messagesSubscription = supabaseClient
                     .channel('messages-channel')
                     .on('postgres_changes', {
                         event: 'INSERT',
@@ -562,7 +565,7 @@
             async function sendMessage(text, fileUrl = null) {
                 if (!text && !fileUrl) return;
                 const time = getCurrentTime();
-                await supabase
+                await supabaseClient
                     .from('messages')
                     .insert([{
                         from_id: currentUser.id,
@@ -600,14 +603,14 @@
                 const files = Array.from(e.target.files);
                 for (const file of files) {
                     const fileName = `${Date.now()}_${file.name}`;
-                    const { data, error } = await supabase.storage
+                    const { data, error } = await supabaseClient.storage
                         .from('chat-files')
                         .upload(fileName, file);
                     if (error) {
                         showNotification('Ошибка', 'Не удалось загрузить файл');
                         continue;
                     }
-                    const { publicURL } = supabase.storage.from('chat-files').getPublicUrl(fileName);
+                    const { publicURL } = supabaseClient.storage.from('chat-files').getPublicUrl(fileName);
                     await sendMessage(null, publicURL);
                 }
                 fileUpload.value = '';
@@ -711,15 +714,15 @@
                 const file = e.target.files[0];
                 if (!file) return;
                 const fileName = `avatar_${currentUser.id}_${Date.now()}`;
-                const { data, error } = await supabase.storage
+                const { data, error } = await supabaseClient.storage
                     .from('avatars')
                     .upload(fileName, file);
                 if (error) {
                     showNotification('Ошибка', 'Не удалось загрузить аватар');
                     return;
                 }
-                const { publicURL } = supabase.storage.from('avatars').getPublicUrl(fileName);
-                await supabase
+                const { publicURL } = supabaseClient.storage.from('avatars').getPublicUrl(fileName);
+                await supabaseClient
                     .from('users')
                     .update({ avatar: publicURL })
                     .eq('id', currentUser.id);
@@ -731,7 +734,7 @@
             // ========== СЛУШАТЕЛЬ ВХОДЯЩИХ ЗВОНКОВ ==========
             function setupIncomingCallListener() {
                 if (!currentUser) return;
-                incomingCallListener = supabase.channel(`incoming-calls-${currentUser.id}`)
+                incomingCallListener = supabaseClient.channel(`incoming-calls-${currentUser.id}`)
                     .on('broadcast', { event: 'incoming_call' }, (payload) => {
                         const { from, name, type } = payload.payload;
                         if (callInProgress) return;
@@ -750,7 +753,7 @@
             async function acceptIncomingCall(fromUserId, type) {
                 if (callInProgress) return;
                 const contact = userContacts.find(c => c.id === fromUserId) || 
-                    (await supabase.from('users').select('*').eq('id', fromUserId).single()).data;
+                    (await supabaseClient.from('users').select('*').eq('id', fromUserId).single()).data;
                 if (!contact) return;
                 currentContact = contact;
                 currentCallType = type;
@@ -796,7 +799,7 @@
                         }
                     };
 
-                    callChannel = supabase.channel(`call-${currentUser.id}-${contact.id}`);
+                    callChannel = supabaseClient.channel(`call-${currentUser.id}-${contact.id}`);
                     callChannel.on('broadcast', { event: 'signal' }, (payload) => {
                         handleSignalingMessage(payload.payload);
                     }).subscribe();
@@ -827,10 +830,10 @@
                 if (saved) {
                     try {
                         const u = JSON.parse(saved);
-                        const { data } = await supabase.from('users').select('*').eq('id', u.id).single();
+                        const { data } = await supabaseClient.from('users').select('*').eq('id', u.id).single();
                         if (data) {
                             currentUser = data;
-                            await supabase.from('users').update({ online: true, last_seen: new Date() }).eq('id', currentUser.id);
+                            await supabaseClient.from('users').update({ online: true, last_seen: new Date() }).eq('id', currentUser.id);
                             showMainInterface();
                         } else localStorage.removeItem('skyMessageUser');
                     } catch { localStorage.removeItem('skyMessageUser'); }
@@ -903,7 +906,7 @@
                         }
                     };
 
-                    callChannel = supabase.channel(`call-${currentUser.id}-${currentContact.id}`);
+                    callChannel = supabaseClient.channel(`call-${currentUser.id}-${currentContact.id}`);
                     callChannel.on('broadcast', { event: 'signal' }, (payload) => {
                         handleSignalingMessage(payload.payload);
                     }).subscribe();
@@ -917,7 +920,7 @@
                     });
 
                     // Уведомление для получателя
-                    const notifyChannel = supabase.channel(`incoming-calls-${currentContact.id}`);
+                    const notifyChannel = supabaseClient.channel(`incoming-calls-${currentContact.id}`);
                     notifyChannel.subscribe((status) => {
                         if (status === 'SUBSCRIBED') {
                             notifyChannel.send({
