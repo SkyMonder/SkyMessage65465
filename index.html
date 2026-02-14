@@ -95,8 +95,9 @@
     </style>
 </head>
 <body>
+    <!-- HTML КАРКАС БЕЗ ИЗМЕНЕНИЙ -->
     <div class="container" id="appContainer">
-        <!-- Экран авторизации (без изменений) -->
+        <!-- Авторизация -->
         <div class="auth-container" id="authContainer">
             <div class="auth-form">
                 <div class="logo">
@@ -304,7 +305,7 @@
             const remoteUserName = document.getElementById('remoteUserName');
 
             // Вспомогательные функции
-            function showError(id, msg) { /* без изменений */
+            function showError(id, msg) {
                 const el = document.getElementById(id);
                 if (el) { el.textContent = msg; el.style.display = 'block'; }
             }
@@ -644,14 +645,13 @@
             }
 
             // ---------- НОВАЯ ЛОГИКА ВХОДЯЩИХ ЗВОНКОВ ----------
-            // Подписка на канал входящих звонков
             function setupIncomingCallListener() {
                 if (!currentUser) return;
                 if (incomingCallListener) incomingCallListener.unsubscribe();
                 incomingCallListener = supabaseClient.channel(`incoming-calls-${currentUser.id}`)
                     .on('broadcast', { event: 'incoming_call' }, (payload) => {
                         const { from, name, type } = payload.payload;
-                        if (callInProgress) return; // если уже разговариваем, игнорируем
+                        if (callInProgress) return;
                         showNotification(
                             type === 'video' ? '📞 Входящий видеозвонок' : '📞 Входящий аудиозвонок',
                             `${name} звонит вам`,
@@ -666,7 +666,6 @@
 
             async function acceptIncomingCall(fromUserId, type) {
                 if (callInProgress) return;
-                // Находим контакт (или пользователя) по id
                 const contact = userContacts.find(c => c.id === fromUserId) ||
                     (await supabaseClient.from('users').select('*').eq('id', fromUserId).single()).data;
                 if (!contact) return;
@@ -698,6 +697,8 @@
                     peerConnection = new RTCPeerConnection({
                         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
                     });
+                    // Буфер для кандидатов, пришедших до установки remoteDescription
+                    peerConnection.pendingCandidates = [];
 
                     localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
@@ -727,7 +728,6 @@
             }
 
             function declineIncomingCall(fromUserId) {
-                // Просто закрываем уведомление, ничего не отправляем
                 showNotification('Звонок отклонён', '');
             }
 
@@ -791,6 +791,8 @@
                     peerConnection = new RTCPeerConnection({
                         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
                     });
+                    // Буфер для кандидатов, пришедших до установки remoteDescription
+                    peerConnection.pendingCandidates = [];
 
                     localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
@@ -852,6 +854,15 @@
                 try {
                     if (msg.payload.type === 'offer') {
                         await peerConnection.setRemoteDescription(new RTCSessionDescription(msg.payload.offer));
+                        // Применяем накопленные кандидаты
+                        if (peerConnection.pendingCandidates && peerConnection.pendingCandidates.length) {
+                            for (const candidate of peerConnection.pendingCandidates) {
+                                try {
+                                    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                                } catch (e) {}
+                            }
+                            peerConnection.pendingCandidates = [];
+                        }
                         const answer = await peerConnection.createAnswer();
                         await peerConnection.setLocalDescription(answer);
                         callChannel.send({
@@ -861,8 +872,23 @@
                         });
                     } else if (msg.payload.type === 'answer') {
                         await peerConnection.setRemoteDescription(new RTCSessionDescription(msg.payload.answer));
+                        // Применяем накопленные кандидаты
+                        if (peerConnection.pendingCandidates && peerConnection.pendingCandidates.length) {
+                            for (const candidate of peerConnection.pendingCandidates) {
+                                try {
+                                    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                                } catch (e) {}
+                            }
+                            peerConnection.pendingCandidates = [];
+                        }
                     } else if (msg.payload.type === 'candidate') {
-                        await peerConnection.addIceCandidate(new RTCIceCandidate(msg.payload.candidate));
+                        if (!peerConnection.remoteDescription) {
+                            // Буферизируем
+                            if (!peerConnection.pendingCandidates) peerConnection.pendingCandidates = [];
+                            peerConnection.pendingCandidates.push(msg.payload.candidate);
+                        } else {
+                            await peerConnection.addIceCandidate(new RTCIceCandidate(msg.payload.candidate));
+                        }
                     }
                 } catch (e) {
                     console.error(e);
@@ -889,7 +915,6 @@
                 endCall();
                 showNotification('Звонок завершён', '');
             });
-            // acceptCallButton будет показан только при входящем звонке, но его обработчик задан выше
 
             toggleVideoButton.addEventListener('click', () => {
                 if (!localStream) return;
